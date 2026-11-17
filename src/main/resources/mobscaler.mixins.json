@@ -1,0 +1,14 @@
+{
+	"required": true,
+	"package": "mobscaler.mixin",
+	"compatibilityLevel": "JAVA_25",
+	"mixins": [
+		"CreeperAccessor",
+		"MobAccessor",
+		"DropScalingMixin",
+		"SkeletonArrowMixin"
+	],
+	"injectors": {
+		"defaultRequire": 1
+	}
+}
