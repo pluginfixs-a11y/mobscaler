@@ -6,6 +6,7 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.Holder;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -96,15 +97,22 @@ public class MobScaler implements ModInitializer {
 		}
 
 		// Даём игре 50 мс на finalizeSpawn (экипировка, варианты моба) и только потом считаем статы.
-		CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS).execute(() -> level.getServer().execute(() -> {
-			if (monster.isRemoved() || !monster.isAlive()) {
+		CompletableFuture.delayedExecutor(50, TimeUnit.MILLISECONDS).execute(() -> {
+			// сервер мог уже остановиться: getServer() тогда null, и задача молча пропадает
+			MinecraftServer server = level.getServer();
+			if (server == null) {
 				return;
 			}
-			if (monster.entityTags().contains(TAG_SCALED)) {
-				return;
-			}
-			scale(monster);
-		}));
+			server.execute(() -> {
+				if (monster.isRemoved() || !monster.isAlive()) {
+					return;
+				}
+				if (monster.entityTags().contains(TAG_SCALED)) {
+					return;
+				}
+				scale(monster);
+			});
+		});
 	}
 
 	private static void scale(Monster monster) {

@@ -22,6 +22,10 @@ strength:
 Armour is picked from six materials with distance-shifted weights, plus a 12 % turtle-helmet chance; armour
 never drops. Drops are multiplied only for stackable items, fractional, capped at the max stack size.
 
+Scaling runs once per mob, 50 ms after it loads (so `finalizeSpawn` has already rolled equipment and
+variants) and marks it with the `mobscaler:scaled` tag, which is saved with the mob. A scaled mob comes out
+at full health.
+
 Skeletons get one random tipped arrow per skeleton (poison, slowness, weakness, mining fatigue, nausea) with
 amplifier II past 7500 blocks and 3× duration. Stray, Bogged, Parched and Wither Skeletons are skipped.
 
