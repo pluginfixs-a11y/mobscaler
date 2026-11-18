@@ -4,6 +4,7 @@ import mobscaler.mixin.CreeperAccessor;
 import mobscaler.mixin.MobAccessor;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.Holder;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.effect.MobEffect;
@@ -63,7 +64,21 @@ public class MobScaler implements ModInitializer {
 		config = ModConfig.load();
 		LOGGER.info("MobScaler: усиление мобов с {} до {} блоков от центра, исключено {} мобов",
 				config.radius_min, config.radius_max, config.excluded_mobs.size());
+		StringBuilder packs = new StringBuilder();
+		for (int[] step : config.phantom_packs) {
+			if (packs.length() > 0) {
+				packs.append(", ");
+			}
+			packs.append(step[0]).append(" -> ").append(config.phantomPackSize(step[0]));
+		}
+		LOGGER.info("MobScaler: фантомы — {}; после сна с {} по {}; потолок {} на игрока",
+				packs, config.phantom_rested_radius, config.phantom_rested_pack, config.phantom_limit_per_player);
 		ServerEntityEvents.ENTITY_LOAD.register(MobScaler::onEntityLoad);
+
+		if (System.getProperty("mobscaler.selftest") != null) {
+			ServerTickEvents.START_SERVER_TICK.register(SelfTest::onTick);
+			LOGGER.info("MobScaler: включена самопроверка (-Dmobscaler.selftest)");
+		}
 	}
 
 	public static void onEntityLoad(Entity entity, ServerLevel level) {

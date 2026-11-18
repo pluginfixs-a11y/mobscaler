@@ -6,7 +6,9 @@
 		"CreeperAccessor",
 		"MobAccessor",
 		"DropScalingMixin",
-		"SkeletonArrowMixin"
+		"SkeletonArrowMixin",
+		"PhantomSpawnerAccessor",
+		"PhantomSpawnerMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

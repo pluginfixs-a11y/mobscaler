@@ -54,6 +54,28 @@ public class ModConfig {
 	/** Во сколько раз растягивается время действия эффекта на стреле. */
 	public double skeleton_effect_duration_multiplier = 3.0;
 
+	// --- фантомы ---
+	/** Свой спавн фантомов вместо ванильного; {@code false} — ванильное поведение. */
+	public boolean scale_phantoms = true;
+	/**
+	 * Стадии размера пачки фантомов: {@code [блоки от центра, сколько в пачке]}, по возрастанию.
+	 * Ближе первой стадии фантомов нет вовсе, между стадиями размер растёт линейно,
+	 * дальше последней — потолок.
+	 */
+	public List<int[]> phantom_packs = new ArrayList<>(List.of(
+			new int[]{3000, 1},
+			new int[]{5000, 5},
+			new int[]{7000, 10},
+			new int[]{10000, 18}));
+	/** С этой дистанции фантомы приходят даже к спавшему игроку — маленькой пачкой. */
+	public int phantom_rested_radius = 7000;
+	/** Сколько фантомов в пачке после сна (дальше {@code phantom_rested_radius}). */
+	public int phantom_rested_pack = 2;
+	/** Потолок фантомов на одного игрока: пачки копятся, пока не упрутся в него. */
+	public int phantom_limit_per_player = 18;
+	/** Радиус, в котором считаются «свои» фантомы игрока при проверке потолка. */
+	public int phantom_limit_radius = 64;
+
 	/**
 	 * Кого не усиливаем вообще. По умолчанию — все рейдовые (Raider), вексы, фантомы,
 	 * боссы и «особые» мобы, которым баффы только ломают поведение.
@@ -113,6 +135,31 @@ public class ModConfig {
 			return 1.0;
 		}
 		return (distance - radius_min) / (double) (radius_max - radius_min);
+	}
+
+	/**
+	 * Размер пачки фантомов на этой дистанции: 0 — фантомов тут не бывает.
+	 * Между стадиями {@code phantom_packs} считается линейно, за последней стадией — её значение.
+	 */
+	public int phantomPackSize(double distance) {
+		if (phantom_packs == null || phantom_packs.isEmpty()) {
+			return 0;
+		}
+		int[] previous = null;
+		for (int[] step : phantom_packs) {
+			if (step == null || step.length < 2) {
+				continue;
+			}
+			if (distance < step[0]) {
+				if (previous == null) {
+					return 0;
+				}
+				double t = (distance - previous[0]) / (double) (step[0] - previous[0]);
+				return (int) Math.round(previous[1] + (step[1] - previous[1]) * t);
+			}
+			previous = step;
+		}
+		return previous == null ? 0 : previous[1];
 	}
 
 	public boolean isExcluded(EntityType<?> type) {
