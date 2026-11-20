@@ -4,10 +4,12 @@ import mobscaler.mixin.CreeperAccessor;
 import mobscaler.mixin.MobAccessor;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.Holder;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -37,10 +39,11 @@ import java.util.concurrent.TimeUnit;
 /**
  * Чем дальше от центра мира (0, 0), тем злее обычные враждебные мобы.
  * <p>
- * Логика: на загрузке моба считается дистанция по X/Z. Всё, что ближе {@code radius_min},
- * не трогаем вообще. Дальше по линейке до {@code radius_max} растут здоровье, урон, скорость,
- * дальность агро, опыт, шанс брони и количество дропа. Боссы, рейдовые и «особые» мобы
- * из списка {@code excluded_mobs} не усиливаются никогда.
+ * Логика: на загрузке моба считается дистанция по X/Z. Всё, что ближе первой ступени
+ * {@code diff_stages} (по умолчанию 3000), не трогаем вообще. Дальше по ступеням растут здоровье,
+ * урон, скорость, дальность агро, опыт, шанс брони и количество дропа; на последней ступени
+ * (по умолчанию 20000) — потолок. Боссы, рейдовые и «особые» мобы из списка {@code excluded_mobs}
+ * не усиливаются никогда. Там же ставится граница мира {@code world_border_radius}.
  */
 public class MobScaler implements ModInitializer {
 	public static final String MOD_ID = "mobscaler";
@@ -63,10 +66,18 @@ public class MobScaler implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		config = ModConfig.load();
-		LOGGER.info("MobScaler: усиление мобов с {} до {} блоков от центра, исключено {} мобов",
-				config.radius_min, config.radius_max, config.excluded_mobs.size());
+		LOGGER.info("MobScaler: усиление мобов от {} блоков от центра, потолок на {} (ступеней {}), исключено {} мобов",
+				config.radius_min, (int) config.rampEnd(),
+				config.diff_stages == null ? 0 : config.diff_stages.size(), config.excluded_mobs.size());
+		if (config.diff_stages != null && !config.diff_stages.isEmpty() && config.rampEnd() != config.radius_max) {
+			LOGGER.warn("MobScaler: radius_max={} не используется — кривая задана ступенями до {}",
+					config.radius_max, (int) config.rampEnd());
+		}
 		StringBuilder packs = new StringBuilder();
 		for (int[] step : config.phantom_packs) {
+			if (step == null || step.length < 2) {
+				continue;
+			}
 			if (packs.length() > 0) {
 				packs.append(", ");
 			}
@@ -75,11 +86,34 @@ public class MobScaler implements ModInitializer {
 		LOGGER.info("MobScaler: фантомы — {}; после сна с {} по {}; потолок {} на игрока",
 				packs, config.phantom_rested_radius, config.phantom_rested_pack, config.phantom_limit_per_player);
 		ServerEntityEvents.ENTITY_LOAD.register(MobScaler::onEntityLoad);
+		ServerLifecycleEvents.SERVER_STARTED.register(MobScaler::applyWorldBorder);
 
 		if (System.getProperty("mobscaler.selftest") != null) {
 			ServerTickEvents.START_SERVER_TICK.register(SelfTest::onTick);
 			LOGGER.info("MobScaler: включена самопроверка (-Dmobscaler.selftest)");
 		}
+	}
+
+	/**
+	 * Граница мира — это и есть лимит «дальше не уходят». Ставится на каждом старте сервера,
+	 * поэтому работает и в новом мире, и в одиночке; {@code world_border_radius = 0} её не трогает.
+	 * <p>
+	 * В 26.2 граница хранится в SavedData <b>каждого уровня</b> (`ServerLevel#getWorldBorder` →
+	 * `getDataStorage().computeIfAbsent(WorldBorder.TYPE)`), поэтому обходим все измерения: иначе
+	 * в Нижнем и Энде осталась бы ванильная почти бесконечная граница.
+	 */
+	public static void applyWorldBorder(MinecraftServer server) {
+		int radius = config.world_border_radius;
+		if (radius <= 0) {
+			return;
+		}
+		for (ServerLevel level : server.getAllLevels()) {
+			WorldBorder border = level.getWorldBorder();
+			border.setCenter(0.0, 0.0);
+			border.setSize(2.0 * radius);
+		}
+		LOGGER.info("MobScaler: граница мира {} блоков от центра (сторона {}) во всех измерениях",
+				radius, 2.0 * radius);
 	}
 
 	public static void onEntityLoad(Entity entity, ServerLevel level) {
@@ -117,11 +151,10 @@ public class MobScaler implements ModInitializer {
 
 	private static void scale(Monster monster) {
 		double distance = Math.hypot(monster.getX(), monster.getZ());
-		if (distance < config.radius_min) {
+		double diff = config.diffFactor(distance);
+		if (diff <= 0.0) {
 			return;
 		}
-
-		double diff = config.diffFactor(distance);
 		monster.addTag(TAG_SCALED);
 
 		scaleAttribute(monster, Attributes.MAX_HEALTH, 1.0 + (config.max_health_multiplier - 1.0) * diff);
